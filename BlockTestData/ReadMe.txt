@@ -1,27 +1,27 @@
 ========================================================================
-    CONSOLE APPLICATION : AutoGenerateBadBlkInfo_Emmc_8291 Project Overview
+    CONSOLE APPLICATION : BlockTestDataProject Overview
 ========================================================================
 
-AppWizard has created this AutoGenerateBadBlkInfo_Emmc_8291 application for you.
+AppWizard has created this BlockTestDataapplication for you.
 
 This file contains a summary of what you will find in each of the files that
-make up your AutoGenerateBadBlkInfo_Emmc_8291 application.
+make up your BlockTestData application.
 
 
-AutoGenerateBadBlkInfo_Emmc_8291.vcxproj
+BlockTestData.vcxproj
     This is the main project file for VC++ projects generated using an Application Wizard.
     It contains information about the version of Visual C++ that generated the file, and
     information about the platforms, configurations, and project features selected with the
     Application Wizard.
 
-AutoGenerateBadBlkInfo_Emmc_8291.vcxproj.filters
+BlockTestData.vcxproj.filters
     This is the filters file for VC++ projects generated using an Application Wizard. 
     It contains information about the association between the files in your project 
     and the filters. This association is used in the IDE to show grouping of files with
     similar extensions under a specific node (for e.g. ".cpp" files are associated with the
     "Source Files" filter).
 
-AutoGenerateBadBlkInfo_Emmc_8291.cpp
+BlockTestData.cpp
     This is the main application source file.
 
 /////////////////////////////////////////////////////////////////////////////
