@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <time.h>
+#include <algorithm>
 using namespace std;
 
 // TODO: reference additional headers your program requires here

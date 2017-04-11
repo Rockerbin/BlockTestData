@@ -12,6 +12,7 @@
 #define SAFE_RELEASE(p) { if(p) { (p)->Release(); (p)=NULL; } }
 #endif
 
+static const UINT FLASH_MAX_ECC = 68;
 static const UINT FLASH_BAD_COL_DATA_LENTH = 4096 * 4 * 4 * 4;
 static const UINT FLASH_SLC_PAGE_CNT = 128;
 static const UINT FLASH_TLC_PAGE_CNT = 384;
@@ -21,7 +22,11 @@ static const UINT FLASH_BLOCK_CNT = 2892;
 static const UINT GOOD_BLK_ECC = 0;
 static const UINT BAD_BLK_ECC = 0xFF;
 vector<vector<BYTE>> g_vecBlkEcc;
+set<UINT> g_setMixBindBlk;
+set<UINT> g_setEnReplacebadBlk;
+UINT g_uMaxBadBlkCeNo = 0, g_uMaxBadBlkPlaneNo = 0, g_uMaxBadBlkCnt = 0;
 #define DIR_PATH "C:\\Users\\Administrator\\Desktop\\395\\BinCard\\8291\\log"
+#define SRC_DID_PATH "C:\\Users\\Administrator\\Desktop\\395\\BinCard\\8291\\log\\20170411165956_Q"
 
 UINT RandU32()
 {
@@ -130,6 +135,7 @@ void SaveDataToPageFile()
 		CloseHandle(handleTLCFile);
 		return;
 	}
+
 	BYTE *pSlcPageData = new BYTE[uSlcPageDataLenth];
 	BYTE *pTLlcageData = new BYTE[uTlcPageDataLenth];
 	UINT ui = 0;
@@ -217,36 +223,33 @@ void SaveBadColData()
 	SAFE_DELETE_ARRAY(pBadColData);
 }
 
-void GenerateFormData(const UINT _uMixedBindBlkCnt)
+BOOL GenerateFormData(const UINT _uMixedBindBlkCnt)
 {
-	set<UINT> setBadBlk;
-	set<UINT> setMixBlk;
+	if (_uMixedBindBlkCnt < g_setMixBindBlk.size() || _uMixedBindBlkCnt < g_setEnReplacebadBlk.size())
+	{
+		cout <<"创建混合绑定块块数小于坏块数 无法生成数据"<< endl;
+		return FALSE;
+	}
 	UINT uSpecialCeNo, uSpecialPlaneNo;
-	UINT uCnt= 0, uBlkCnt = 0;
+	UINT uCnt= 0;
 	UINT uPer = 0, uLastPer = 1000;
 
 	srand((unsigned int)time(NULL));
 
-	uSpecialPlaneNo = RandU32()%FLASH_PLANE_CNT;
-	uSpecialCeNo = RandU32()%FLASH_CE_CNT;
-
-	g_vecBlkEcc.resize(FLASH_CE_CNT);
-	for (UINT uCeNo =0 ; uCeNo < FLASH_CE_CNT; uCeNo++)
-	{
-		g_vecBlkEcc[uCeNo].resize(FLASH_BLOCK_CNT, GOOD_BLK_ECC);
-	}
+	uSpecialCeNo = g_uMaxBadBlkCeNo;
+	uSpecialPlaneNo = g_uMaxBadBlkPlaneNo;
 
 	while (1)
 	{
 		uCnt++;
-		UINT uRandBlkNo = RandU32()%FLASH_BLOCK_CNT;
-
-		if (setBadBlk.end() == setBadBlk.find(uRandBlkNo))
+		UINT uRandBlkNo = RandU32()%(FLASH_BLOCK_CNT/FLASH_PLANE_CNT);
+		if ((g_setMixBindBlk.end() == g_setMixBindBlk.find(uRandBlkNo)) 
+			&& (g_setEnReplacebadBlk.end() == g_setEnReplacebadBlk.find(uRandBlkNo)))
 		{
 			// 置坏快
 			for (UINT uCeNo = 0; uCeNo < FLASH_CE_CNT; uCeNo++)
 			{
-				UINT uTmpBlk = uRandBlkNo/FLASH_PLANE_CNT*FLASH_PLANE_CNT;
+				UINT uTmpBlk = uRandBlkNo*FLASH_PLANE_CNT;
 				for (UINT uPlaneNo = 0; uPlaneNo < FLASH_PLANE_CNT; uPlaneNo++)
 				{
 					if (((uTmpBlk+uPlaneNo)%FLASH_PLANE_CNT != uSpecialPlaneNo) || (uCeNo != uSpecialCeNo))
@@ -256,15 +259,14 @@ void GenerateFormData(const UINT _uMixedBindBlkCnt)
 				}
 			}
 	
-			uBlkCnt++;
-			setBadBlk.insert(uRandBlkNo);
+			g_setMixBindBlk.insert(uRandBlkNo);
 		}
-		uPer =uBlkCnt*100/ _uMixedBindBlkCnt;
+		uPer = g_setMixBindBlk.size()*100/ _uMixedBindBlkCnt;
 		if (uLastPer != uPer)
 		{
 			uLastPer = uPer;
-			cout << "次数:" << uCnt << " 混合绑定块:" << uBlkCnt <<" 完成百分比 "<< uPer << "%" << "\r";
-			if (uBlkCnt == _uMixedBindBlkCnt)
+			cout << "次数:" << uCnt << " 混合绑定块:" << g_setMixBindBlk.size() <<" 完成百分比 "<< uPer << "%" << "\r";
+			if (g_setMixBindBlk.size() == _uMixedBindBlkCnt)
 			{
 				break;
 			}
@@ -276,53 +278,34 @@ void GenerateFormData(const UINT _uMixedBindBlkCnt)
 	// 构造特殊列的个数要和特殊绑定块一样
 	uCnt = 0;
 	UINT uSpecialBlkCnt = 0;
-	if (_uMixedBindBlkCnt <= FLASH_BLOCK_CNT/2)
+	if (_uMixedBindBlkCnt <= (FLASH_BLOCK_CNT/FLASH_PLANE_CNT)/2)
 	{
 		uSpecialBlkCnt = _uMixedBindBlkCnt;
 	}
 	else
 	{
-		uSpecialBlkCnt = FLASH_BLOCK_CNT - uBlkCnt;
+		uSpecialBlkCnt = (FLASH_BLOCK_CNT/FLASH_PLANE_CNT) - g_setMixBindBlk.size();
 	}
-	uBlkCnt = 0;
+
 	uPer = 0; 
 	uLastPer = 1000;
 	while(1)
 	{
 		uCnt++;
-		UINT uRandBlkNo = RandU32()%FLASH_BLOCK_CNT;
-		BOOL bExistBadBlkQueue = FALSE;
-
-		for (UINT uCeNo = 0; uCeNo < FLASH_CE_CNT; uCeNo++)
+		UINT uRandBlkNo = RandU32()%(FLASH_BLOCK_CNT/FLASH_PLANE_CNT);
+		UINT uTmpBlk = uRandBlkNo*FLASH_PLANE_CNT;
+		if ((g_setMixBindBlk.end() == g_setMixBindBlk.find(uRandBlkNo)) 
+			&& (g_setEnReplacebadBlk.end() == g_setEnReplacebadBlk.find(uRandBlkNo)))
 		{
-			for (UINT uPlaneNo = 0; uPlaneNo < FLASH_PLANE_CNT; uPlaneNo++)
-			{
-				UINT uTmpBlk = uRandBlkNo/FLASH_PLANE_CNT*FLASH_PLANE_CNT;
-				if (BAD_BLK_ECC == g_vecBlkEcc[uCeNo][uTmpBlk+uPlaneNo])
-				{
-					bExistBadBlkQueue = TRUE;
-					break;
-				}
-			}
+			// 置坏快
+			g_vecBlkEcc[uSpecialCeNo][uTmpBlk+uSpecialPlaneNo] = BAD_BLK_ECC;
+			g_setEnReplacebadBlk.insert(uRandBlkNo);
 		}
 
-		if (!bExistBadBlkQueue)
-		{
-			if (setMixBlk.end() == setMixBlk.find(uRandBlkNo))
-			{
-				if ((uRandBlkNo%FLASH_PLANE_CNT) == uSpecialPlaneNo)
-				{
-					// 置坏快
-					g_vecBlkEcc[uSpecialCeNo][uRandBlkNo] = BAD_BLK_ECC;
-					setMixBlk.insert(uRandBlkNo);
-					uBlkCnt++;
-				}
-			}
-		}
 
 		if (uSpecialBlkCnt != 0)
 		{
-			uPer = uBlkCnt *100/ uSpecialBlkCnt;
+			uPer = g_setEnReplacebadBlk.size() *100/ uSpecialBlkCnt;
 		}
 		else
 		{
@@ -332,15 +315,183 @@ void GenerateFormData(const UINT _uMixedBindBlkCnt)
 		if (uLastPer != uPer)
 		{
 			uLastPer = uPer;
-			cout << "次数:" << uCnt << " 基准列块:" << uBlkCnt << " 完成百分比 "<< uPer << "%" << "\r";
-			if (uBlkCnt == uSpecialBlkCnt)
+			cout << "次数:" << uCnt << " 基准块:" << g_setEnReplacebadBlk.size() << " 完成百分比 "<< uPer << "%" << "\r";
+			if (g_setEnReplacebadBlk.size() == uSpecialBlkCnt)
 			{
 				break;
 			}
 		}
-		}
+	}
 
 	cout << endl;
+	return TRUE;
+}
+
+void ReadSrcBlkData()
+{
+	UINT uBlkDataLenth = FLASH_BLOCK_CNT*FLASH_CE_CNT;
+	HANDLE handleSLCFile, handleTLCFile;
+    BYTE* pSlcBlkData = new BYTE[FLASH_BAD_COL_DATA_LENTH];
+	BYTE* pTlcBlkData = new BYTE[FLASH_BAD_COL_DATA_LENTH];
+	// slc_bad_blk_tab.dat && tlc_bad_blk_tab.dat
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	string strSLCFilePath = SRC_DID_PATH;
+	string strTLCFilePath = SRC_DID_PATH;
+	strSLCFilePath += "\\slc_bad_blk_tab.dat";
+	strTLCFilePath += "\\tlc_bad_blk_tab.dat";
+	handleSLCFile = CreateFile(strSLCFilePath.c_str(), GENERIC_READ, 0, 0, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL, NULL);
+	if (INVALID_HANDLE_VALUE == handleSLCFile)
+	{
+		cout << "创建" << strSLCFilePath.c_str() << " 文件句柄失败" << endl;
+		// 关闭资源
+		CloseHandle(handleSLCFile);
+		return;
+	}
+	handleTLCFile = CreateFile(strTLCFilePath.c_str(), GENERIC_READ, 0, 0, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL, NULL);
+	if (INVALID_HANDLE_VALUE == handleTLCFile)
+	{
+		cout << "创建" << strTLCFilePath.c_str() << " 文件句柄失败" << endl;
+		// 关闭资源
+		CloseHandle(handleSLCFile);
+		CloseHandle(handleTLCFile);
+		return;
+	}
+
+	DWORD uRealWriteNum = 0;
+	if (!ReadFile(handleSLCFile, pSlcBlkData, uBlkDataLenth, &uRealWriteNum, NULL))
+	{
+		cout << "读" << strSLCFilePath.c_str() << " 文件失败" << endl;
+		// 关闭资源
+		CloseHandle(handleSLCFile);
+		CloseHandle(handleTLCFile);
+		SAFE_DELETE_ARRAY(pSlcBlkData);
+		return;
+	}
+	cout <<strSLCFilePath.c_str() <<endl;
+	assert(uBlkDataLenth == uRealWriteNum);
+	if (!ReadFile(handleTLCFile, pTlcBlkData, uBlkDataLenth, &uRealWriteNum, NULL))
+	{
+		cout << "读" << strTLCFilePath.c_str() << " 文件失败" << endl;
+		// 关闭资源
+		CloseHandle(handleSLCFile);
+		CloseHandle(handleTLCFile);
+		SAFE_DELETE_ARRAY(pSlcBlkData);
+		return;
+	}
+	assert(uBlkDataLenth == uRealWriteNum);
+	cout <<strTLCFilePath.c_str() <<endl;
+
+	// 初始化FlashEcc结构
+	g_vecBlkEcc.clear();
+	g_vecBlkEcc.resize(FLASH_CE_CNT);
+	for (UINT uCeNo =0 ; uCeNo < FLASH_CE_CNT; uCeNo++)
+	{
+		g_vecBlkEcc[uCeNo].resize(FLASH_BLOCK_CNT, GOOD_BLK_ECC);
+		for (UINT uBlkNo = 0; uBlkNo < FLASH_BLOCK_CNT; uBlkNo++)
+		{
+			if ((pSlcBlkData[uCeNo*FLASH_BLOCK_CNT+uBlkNo] > FLASH_MAX_ECC) 
+				&& (pTlcBlkData[uCeNo*FLASH_BLOCK_CNT+uBlkNo] > FLASH_MAX_ECC))
+			{
+				g_vecBlkEcc[uCeNo][uBlkNo] = BAD_BLK_ECC;
+			}
+		}
+	}
+
+	// 关闭资源
+	CloseHandle(handleSLCFile);
+	CloseHandle(handleTLCFile);
+	SAFE_DELETE_ARRAY(pSlcBlkData);
+
+	return;
+}
+
+typedef struct _BAD_BLK_DIS
+{
+	UINT uCeNo;
+	UINT uPlaneNo;
+	UINT uBadBlkCnt;
+	UINT uBadBlkAfNo[FLASH_BLOCK_CNT/FLASH_CE_CNT];
+}BAD_BLK_DIS, *PBAD_BLK_DIS;
+
+BOOL Compare(const BAD_BLK_DIS &tmpBadBlkInfo1, const BAD_BLK_DIS &tmpBadBlkInfo2)
+{
+	return  tmpBadBlkInfo1.uBadBlkCnt>tmpBadBlkInfo2.uBadBlkCnt ? 1 :0;
+}
+
+void AnalysisBadBlkDataFromFile()
+{
+	g_setMixBindBlk.clear();
+	g_setEnReplacebadBlk.clear();
+	vector<BAD_BLK_DIS> flashBadBlkDis;
+
+	UINT uBadBlkCnt[FLASH_CE_CNT*FLASH_PLANE_CNT] = {0};
+
+	for (UINT uCeNo = 0; uCeNo < FLASH_CE_CNT; uCeNo++)
+	{
+		BAD_BLK_DIS tmpBADBlkDis = {0};
+		tmpBADBlkDis.uCeNo = uCeNo;
+		for (UINT uPlaneNo = 0; uPlaneNo < FLASH_PLANE_CNT; uPlaneNo++)
+		{
+			tmpBADBlkDis.uPlaneNo = uPlaneNo;
+			flashBadBlkDis.push_back(tmpBADBlkDis);
+		}
+
+		for (UINT uBlkNo = 0; uBlkNo < FLASH_BLOCK_CNT; uBlkNo++)
+		{
+			if (g_vecBlkEcc[uCeNo][uBlkNo] > FLASH_MAX_ECC)
+			{
+				UINT uPlaneNo = uBlkNo%FLASH_PLANE_CNT;
+				flashBadBlkDis[uCeNo*FLASH_PLANE_CNT+uPlaneNo].uBadBlkCnt++;
+			}
+		}
+	}
+
+	// 降序排序
+	sort(flashBadBlkDis.begin(), flashBadBlkDis.end(), Compare);
+
+	// 记录特殊绑定块队列
+	g_uMaxBadBlkCeNo =flashBadBlkDis[0].uCeNo;
+	g_uMaxBadBlkPlaneNo = flashBadBlkDis[0].uPlaneNo;
+	g_uMaxBadBlkCnt = flashBadBlkDis[0].uBadBlkCnt;
+
+	UINT uMixedBadBlkCnt = 0, uSpecialBlkCnt = 0;
+	for (UINT uCeNo = 0; uCeNo < FLASH_CE_CNT; uCeNo++)
+	{
+		for (UINT uAFBlkNo = 0; uAFBlkNo < FLASH_BLOCK_CNT/FLASH_PLANE_CNT; uAFBlkNo++)
+		{
+			BOOL bBadAFBlk = FALSE, bBenchBadBlk = FALSE;
+			for (UINT uPlaneNo = 0; uPlaneNo < FLASH_PLANE_CNT; uPlaneNo++)
+			{
+				if (g_vecBlkEcc[uCeNo][uAFBlkNo*FLASH_PLANE_CNT+uPlaneNo] > FLASH_MAX_ECC)
+				{
+					bBadAFBlk = TRUE;
+					// 判断是否为基准坏块
+					if ((uCeNo == g_uMaxBadBlkCeNo) && (uPlaneNo == g_uMaxBadBlkPlaneNo))
+					{
+						bBenchBadBlk = TRUE;
+					}
+				}
+			}
+
+			// 置对应的坏块队列
+			if (bBadAFBlk)
+			{
+				if (bBenchBadBlk)
+				{
+					g_setEnReplacebadBlk.insert(uAFBlkNo);
+				}
+				else
+				{
+					g_setMixBindBlk.insert(uAFBlkNo);
+				}
+			}
+		}
+	}
+
+	cout << "从坏块中整理的混合绑定块个数：" << g_setMixBindBlk.size() << endl;
+	cout << "从坏块中整理的基准块个数：" << g_setEnReplacebadBlk.size() << endl;
 }
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -354,11 +505,19 @@ int _tmain(int argc, _TCHAR* argv[])
 			cout << "请输入要生成的混合块数:";
 			cin >> uMixedBindBlkCnt;
 		}
-		GenerateFormData(uMixedBindBlkCnt);
+		cout << "读取原始数据..." << endl;
+		ReadSrcBlkData();
 
-		SaveDataToBlkFile();
-		SaveDataToPageFile();
-		SaveBadColData();
+		cout << "开始分析并创建混合绑定块数据..." << endl;
+		AnalysisBadBlkDataFromFile();
+		BOOL bRet = GenerateFormData(uMixedBindBlkCnt);
+		if (bRet)
+		{
+			cout << "保存数据文件..." << endl;
+			SaveDataToBlkFile();
+			SaveDataToPageFile();
+			SaveBadColData();
+		}
 
 		cout << "=============================================================" << endl;
 	}
