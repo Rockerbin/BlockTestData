@@ -14,19 +14,41 @@
 
 static const UINT FLASH_MAX_ECC = 68;
 static const UINT FLASH_BAD_COL_DATA_LENTH = 4096 * 4 * 4 * 4;
-static const UINT FLASH_SLC_PAGE_CNT = 128;
-static const UINT FLASH_TLC_PAGE_CNT = 384;
-static const UINT FLASH_CE_CNT = 1;
+static const UINT FLASH_SLC_PAGE_CNT = 288;
+static const UINT FLASH_TLC_PAGE_CNT = 576;
+static const UINT FLASH_CE_CNT = 2;
 static const UINT FLASH_PLANE_CNT = 2;
-static const UINT FLASH_BLOCK_CNT = 2892;
+static const UINT FLASH_BLOCK_CNT = 1880;
 static const UINT GOOD_BLK_ECC = 0;
 static const UINT BAD_BLK_ECC = 0xFF;
 vector<vector<BYTE>> g_vecBlkEcc;
 set<UINT> g_setMixBindBlk;
 set<UINT> g_setEnReplacebadBlk;
 UINT g_uMaxBadBlkCeNo = 0, g_uMaxBadBlkPlaneNo = 0, g_uMaxBadBlkCnt = 0;
-#define DIR_PATH "C:\\Users\\Administrator\\Desktop\\395\\BinCard\\8291\\log"
-#define SRC_DID_PATH "C:\\Users\\Administrator\\Desktop\\395\\BinCard\\8291\\log\\20170411165956_Q"
+#define DIR_PATH "C:\\Users\\Administrator\\Desktop\\8293NFTL\\BinCard\\8293\\log"
+#define SRC_DID_PATH "C:\\Users\\Administrator\\Desktop\\8293NFTL\\BinCard\\8293\\log\\20170623170641_Q"
+
+BOOL IsAllNFBadBlk(UINT _uAFBlkNo)
+{
+	BOOL bAllNFBadBlk = TRUE;
+	for (UINT uCeNo = 0; uCeNo < FLASH_CE_CNT; uCeNo++)
+	{
+		for (UINT uPlaneNo = 0; uPlaneNo < FLASH_PLANE_CNT; uPlaneNo++)
+		{
+			if (!(g_vecBlkEcc[uCeNo][_uAFBlkNo*FLASH_PLANE_CNT+uPlaneNo] > FLASH_MAX_ECC))
+			{
+				bAllNFBadBlk = FALSE;
+				break;
+			}
+		}
+
+		if (!bAllNFBadBlk)
+		{
+			break;
+		}
+	}
+	return bAllNFBadBlk;
+}
 
 UINT RandU32()
 {
@@ -230,6 +252,7 @@ BOOL GenerateFormData(const UINT _uMixedBindBlkCnt)
 		cout <<"创建混合绑定块块数小于坏块数 无法生成数据"<< endl;
 		return FALSE;
 	}
+
 	UINT uSpecialCeNo, uSpecialPlaneNo;
 	UINT uCnt= 0;
 	UINT uPer = 0, uLastPer = 1000;
@@ -478,13 +501,16 @@ void AnalysisBadBlkDataFromFile()
 			// 置对应的坏块队列
 			if (bBadAFBlk)
 			{
-				if (bBenchBadBlk)
+				if (!IsAllNFBadBlk(uAFBlkNo))
 				{
-					g_setEnReplacebadBlk.insert(uAFBlkNo);
-				}
-				else
-				{
-					g_setMixBindBlk.insert(uAFBlkNo);
+					if (bBenchBadBlk)
+					{
+						g_setEnReplacebadBlk.insert(uAFBlkNo);
+					}
+					else
+					{
+						g_setMixBindBlk.insert(uAFBlkNo);
+					}
 				}
 			}
 		}
